@@ -30,7 +30,8 @@
 
 ## 使用方式
 
-1. 直接用瀏覽器開啟 `index.html`（建議 Chrome / Edge），或部署到 GitHub Pages（Settings → Pages → 選擇分支根目錄）。
+1. 線上版：<https://dstar619.github.io/valorantgun/>（GitHub Pages，`main` 分支更新後約 1 分鐘自動重新部署）。
+   也可以直接用瀏覽器開啟本機的 `index.html`（建議 Chrome / Edge）。
 2. 在右側輸入你在遊戲中的靈敏度與滑鼠 DPI。
 3. 選擇模式 → 點擊畫面鎖定滑鼠 → 倒數 3 秒後開始。
 4. 操作：左鍵射擊、`Esc` 暫停、`R` 重新開始；結算畫面按 `R` 再來一次、`Esc` 返回選單。
@@ -50,6 +51,13 @@ js/main.js        選單 UI：模式卡片、設定表單、靈敏度換算、�
 ```
 
 腳本以一般 `<script>` 依序載入（非 ES module），所以可以直接用 `file://` 開啟。載入順序：storage → engine → modes → game → main。
+
+## 部署（GitHub Pages）
+
+- 方式：Settings → Pages → Source 選 **Deploy from a branch**，分支 `main`、資料夾 `/ (root)`。
+- 網址：<https://dstar619.github.io/valorantgun/>
+- 根目錄有 `.nojekyll`，讓 GitHub Pages 直接提供靜態檔案、不經過 Jekyll 建置。
+- 所有資源都用相對路徑（`css/…`、`js/…`），所以放在 `/valorantgun/` 子路徑下也能正常載入。
 
 ## 開發備註
 
@@ -73,6 +81,9 @@ js/main.js        選單 UI：模式卡片、設定表單、靈敏度換算、�
 - [ ] 可調整 FOV / 解析度比例（4:3 拉伸）
 
 ## 更新紀錄
+
+### v1.0.1 — 2026-10-12
+- 準備 GitHub Pages 部署：新增 `.nojekyll`，README 補上部署方式與線上網址
 
 ### v1.0.0 — 2026-10-12
 - 建立專案：純前端練槍網站，可直接開啟 `index.html`
