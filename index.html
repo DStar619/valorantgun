@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ValorantGun 練槍場</title>
+  <meta name="description" content="特戰英豪（VALORANT）練槍網站：與遊戲相同的靈敏度與 FOV 換算，多種瞄準訓練模式。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- 主選單 -->
+  <section id="menu" class="screen active">
+    <header class="brand">
+      <h1>VALORANT<span>GUN</span></h1>
+      <p>特戰英豪練槍場 · 使用與遊戲相同的靈敏度（yaw 0.07）與 103° 水平 FOV</p>
+    </header>
+
+    <div class="layout">
+      <main class="col">
+        <h2>訓練模式</h2>
+        <div id="mode-list" class="mode-grid"></div>
+
+        <h2>最近紀錄</h2>
+        <div class="panel">
+          <table class="history">
+            <thead><tr><th>時間</th><th>模式</th><th>秒數</th><th>分數</th><th>命中率</th><th>平均</th></tr></thead>
+            <tbody id="history-body"></tbody>
+          </table>
+          <button id="clear-history" class="btn ghost small">清除所有紀錄</button>
+        </div>
+      </main>
+
+      <aside class="col side">
+        <div class="panel">
+          <h3>靈敏度</h3>
+          <label class="row">遊戲靈敏度 <input type="number" data-setting="sens" step="0.001" min="0.01" max="10"></label>
+          <label class="row">滑鼠 DPI <input type="number" data-setting="dpi" step="50" min="100" max="32000"></label>
+          <div class="derived">
+            <div><span>eDPI</span><b id="edpi">-</b></div>
+            <div><span>cm/360°</span><b id="cm360">-</b></div>
+          </div>
+          <label class="row check"><input type="checkbox" data-setting="rawInput"> 原始輸入（Raw Input，Chrome/Edge 支援）</label>
+          <details class="converter">
+            <summary>從其他遊戲換算</summary>
+            <label class="row">遊戲
+              <select id="conv-game">
+                <option value="0.022">CS2 / CS:GO / Apex Legends</option>
+                <option value="0.0066">Overwatch 2 / Call of Duty</option>
+                <option value="0.07">VALORANT</option>
+              </select>
+            </label>
+            <label class="row">原靈敏度 <input type="number" id="conv-in" step="0.01" value="1.25"></label>
+            <div class="derived"><div><span>VALORANT 靈敏度</span><b id="conv-out">-</b></div></div>
+            <button id="conv-apply" class="btn small">套用</button>
+          </details>
+        </div>
+
+        <div class="panel">
+          <h3>訓練設定</h3>
+          <label class="row">每場時間
+            <select data-setting="duration">
+              <option value="30">30 秒</option>
+              <option value="60">60 秒</option>
+              <option value="90">90 秒</option>
+              <option value="120">120 秒</option>
+            </select>
+          </label>
+          <label class="row">目標大小 <input type="range" data-setting="targetScale" min="0.5" max="2" step="0.1"><output data-for="targetScale"></output></label>
+          <label class="row">音量 <input type="range" data-setting="volume" min="0" max="1" step="0.05"><output data-for="volume"></output></label>
+        </div>
+
+        <div class="panel">
+          <h3>準星</h3>
+          <div class="xh-preview"><canvas id="xh-preview" width="160" height="90"></canvas></div>
+          <label class="row">顏色 <input type="color" data-setting="xhColor"></label>
+          <div class="swatches" id="xh-swatches"></div>
+          <label class="row">線長 <input type="range" data-setting="xhLength" min="0" max="20" step="1"><output data-for="xhLength"></output></label>
+          <label class="row">粗細 <input type="range" data-setting="xhThickness" min="1" max="10" step="1"><output data-for="xhThickness"></output></label>
+          <label class="row">間距 <input type="range" data-setting="xhGap" min="0" max="20" step="1"><output data-for="xhGap"></output></label>
+          <label class="row check"><input type="checkbox" data-setting="xhOutline"> 外框</label>
+          <label class="row check"><input type="checkbox" data-setting="xhDot"> 中心點</label>
+          <button id="reset-settings" class="btn ghost small">恢復預設設定</button>
+        </div>
+      </aside>
+    </div>
+    <footer class="foot">非官方粉絲專案，與 Riot Games 無關。設定與紀錄僅儲存在你的瀏覽器中。</footer>
+  </section>
+
+  <!-- 遊戲畫面 -->
+  <section id="game" class="screen">
+    <canvas id="canvas"></canvas>
+    <div id="hud">
+      <div class="hud-item"><span>模式</span><b id="hud-mode">-</b></div>
+      <div class="hud-item big"><span>剩餘</span><b id="hud-time">0.0</b></div>
+      <div class="hud-item"><span>分數</span><b id="hud-score">0</b></div>
+      <div class="hud-item"><span id="hud-acc-label">命中率</span><b id="hud-acc">-</b></div>
+    </div>
+    <div id="countdown"></div>
+    <div id="overlay" class="overlay">
+      <div class="overlay-box">
+        <h2 id="overlay-title">點擊開始</h2>
+        <p id="overlay-desc"></p>
+        <p class="hint">點擊畫面鎖定滑鼠 · 按 <kbd>Esc</kbd> 暫停 · 按 <kbd>R</kbd> 重新開始</p>
+        <div class="overlay-actions">
+          <button id="btn-resume" class="btn">開始</button>
+          <button id="btn-restart" class="btn ghost">重新開始</button>
+          <button id="btn-quit" class="btn ghost">返回選單</button>
+        </div>
+        <p id="overlay-error" class="error"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 結算畫面 -->
+  <section id="result" class="screen">
+    <div class="result-box">
+      <p class="result-mode" id="res-mode">-</p>
+      <h2 class="result-score" id="res-score">0</h2>
+      <p class="badge" id="res-badge"></p>
+      <div class="result-stats" id="res-stats"></div>
+      <div class="overlay-actions">
+        <button id="res-again" class="btn">再來一次 (R)</button>
+        <button id="res-menu" class="btn ghost">返回選單 (Esc)</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="js/storage.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/modes.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
