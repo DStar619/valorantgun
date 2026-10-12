@@ -23,6 +23,17 @@
         <h2>訓練模式</h2>
         <div id="mode-list" class="mode-grid"></div>
 
+        <h2>成績趨勢</h2>
+        <div class="panel trend-panel">
+          <div class="trend-filters">
+            <label>模式 <select id="trend-mode"></select></label>
+            <label>指標 <select id="trend-metric"></select></label>
+            <span class="trend-note" id="trend-note"></span>
+          </div>
+          <div class="trend-tiles" id="trend-tiles"></div>
+          <div id="trend-chart"></div>
+        </div>
+
         <h2>最近紀錄</h2>
         <div class="panel">
           <table class="history">
@@ -42,6 +53,8 @@
             <div><span>eDPI</span><b id="edpi">-</b></div>
             <div><span>cm/360°</span><b id="cm360">-</b></div>
           </div>
+          <label class="row">開鏡靈敏度倍率 <input type="number" data-setting="scopedSens" step="0.01" min="0.01" max="5"></label>
+          <label class="row check"><input type="checkbox" data-setting="scopeHold"> 按住右鍵開鏡（取消勾選＝點一下切換）</label>
           <label class="row check"><input type="checkbox" data-setting="rawInput"> 原始輸入（Raw Input，Chrome/Edge 支援）</label>
           <details class="converter">
             <summary>從其他遊戲換算</summary>
@@ -74,14 +87,56 @@
 
         <div class="panel">
           <h3>準星</h3>
-          <div class="xh-preview"><canvas id="xh-preview" width="160" height="90"></canvas></div>
-          <label class="row">顏色 <input type="color" data-setting="xhColor"></label>
-          <div class="swatches" id="xh-swatches"></div>
-          <label class="row">線長 <input type="range" data-setting="xhLength" min="0" max="20" step="1"><output data-for="xhLength"></output></label>
-          <label class="row">粗細 <input type="range" data-setting="xhThickness" min="1" max="10" step="1"><output data-for="xhThickness"></output></label>
-          <label class="row">間距 <input type="range" data-setting="xhGap" min="0" max="20" step="1"><output data-for="xhGap"></output></label>
-          <label class="row check"><input type="checkbox" data-setting="xhOutline"> 外框</label>
-          <label class="row check"><input type="checkbox" data-setting="xhDot"> 中心點</label>
+          <div class="xh-preview">
+            <canvas id="xh-preview" width="240" height="110"></canvas>
+            <span class="xh-cap">實際大小 ・ 放大 3×</span>
+          </div>
+          <label class="row">預設準星 <select id="xh-preset"><option value="">— 選擇 —</option></select></label>
+          <div class="xh-code">
+            <input id="xh-code" type="text" spellcheck="false" autocomplete="off" placeholder="貼上遊戲內匯出的準星代碼" aria-label="準星代碼">
+            <div class="xh-code-actions">
+              <button id="xh-import" class="btn small">匯入代碼</button>
+              <button id="xh-copy" class="btn ghost small">複製目前代碼</button>
+            </div>
+            <p id="xh-msg" class="msg" role="status"></p>
+          </div>
+          <details open>
+            <summary>顏色與外框</summary>
+            <label class="row">顏色 <select data-xh="P.c" class="xh-color-select"></select></label>
+            <label class="row">自訂顏色 <input type="color" id="xh-custom"></label>
+            <label class="row check"><input type="checkbox" data-xh="P.h"> 外框</label>
+            <label class="row">外框不透明度 <input type="range" data-xh="P.o" min="0" max="1" step="0.05"><output></output></label>
+            <label class="row">外框粗細 <input type="range" data-xh="P.t" min="1" max="6" step="1"><output></output></label>
+          </details>
+          <details>
+            <summary>中心點</summary>
+            <label class="row check"><input type="checkbox" data-xh="P.d"> 顯示中心點</label>
+            <label class="row">不透明度 <input type="range" data-xh="P.a" min="0" max="1" step="0.05"><output></output></label>
+            <label class="row">粗細 <input type="range" data-xh="P.z" min="1" max="6" step="1"><output></output></label>
+          </details>
+          <details open>
+            <summary>內線</summary>
+            <label class="row check"><input type="checkbox" data-xh="P.0b"> 顯示內線</label>
+            <label class="row">不透明度 <input type="range" data-xh="P.0a" min="0" max="1" step="0.05"><output></output></label>
+            <label class="row">長度 <input type="range" data-xh="P.0l" min="0" max="20" step="1"><output></output></label>
+            <label class="row">粗細 <input type="range" data-xh="P.0t" min="0" max="10" step="1"><output></output></label>
+            <label class="row">間距 <input type="range" data-xh="P.0o" min="0" max="20" step="1"><output></output></label>
+          </details>
+          <details>
+            <summary>外線</summary>
+            <label class="row check"><input type="checkbox" data-xh="P.1b"> 顯示外線</label>
+            <label class="row">不透明度 <input type="range" data-xh="P.1a" min="0" max="1" step="0.05"><output></output></label>
+            <label class="row">長度 <input type="range" data-xh="P.1l" min="0" max="10" step="1"><output></output></label>
+            <label class="row">粗細 <input type="range" data-xh="P.1t" min="0" max="10" step="1"><output></output></label>
+            <label class="row">間距 <input type="range" data-xh="P.1o" min="0" max="40" step="1"><output></output></label>
+          </details>
+          <details>
+            <summary>狙擊鏡中心點</summary>
+            <label class="row check"><input type="checkbox" data-xh="S.d"> 顯示中心點</label>
+            <label class="row">顏色 <select data-xh="S.c" class="xh-color-select"></select></label>
+            <label class="row">不透明度 <input type="range" data-xh="S.o" min="0" max="1" step="0.05"><output></output></label>
+            <label class="row">大小 <input type="range" data-xh="S.s" min="0.5" max="4" step="0.5"><output></output></label>
+          </details>
           <button id="reset-settings" class="btn ghost small">恢復預設設定</button>
         </div>
       </aside>
@@ -103,7 +158,7 @@
       <div class="overlay-box">
         <h2 id="overlay-title">點擊開始</h2>
         <p id="overlay-desc"></p>
-        <p class="hint">點擊畫面鎖定滑鼠 · 按 <kbd>Esc</kbd> 暫停 · 按 <kbd>R</kbd> 重新開始</p>
+        <p class="hint">點擊畫面鎖定滑鼠 · 左鍵射擊 · 右鍵開鏡（狙擊）· <kbd>Esc</kbd> 暫停 · <kbd>R</kbd> 重新開始</p>
         <div class="overlay-actions">
           <button id="btn-resume" class="btn">開始</button>
           <button id="btn-restart" class="btn ghost">重新開始</button>
@@ -121,6 +176,11 @@
       <h2 class="result-score" id="res-score">0</h2>
       <p class="badge" id="res-badge"></p>
       <div class="result-stats" id="res-stats"></div>
+      <div class="compare" id="res-compare"></div>
+      <div class="res-trend">
+        <p class="res-trend-title" id="res-trend-title">分數趨勢</p>
+        <div id="res-chart"></div>
+      </div>
       <div class="overlay-actions">
         <button id="res-again" class="btn">再來一次 (R)</button>
         <button id="res-menu" class="btn ghost">返回選單 (Esc)</button>
@@ -129,9 +189,11 @@
   </section>
 
   <script src="js/storage.js"></script>
+  <script src="js/crosshair.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/modes.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/trend.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>
