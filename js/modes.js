@@ -6,7 +6,22 @@
 //   onHit(g, t)       擊中目標
 //   update(g, dt)     每幀更新（可選）
 //   points(ttk)       擊中得分（可選，預設依擊殺速度加分）
+//   weapon            'operator' | 'marshal'（可選，未設定 = 步槍，無射速限制）
+//   hittable(g, t)    目標此刻是否打得到（可選，例如被牆擋住時回傳 false）
 // g 為 Game 實例，見 game.js
+
+// 狙擊槍參數（參考遊戲數值，散布為近似值）
+//   zooms         各段開鏡倍率
+//   fireInterval  兩發之間的秒數（Operator 射速 0.6 發/秒、Marshal 1.5 發/秒）
+//   hipSpread     未開鏡射擊的散布半徑（度）
+//   scopeTime     開鏡到第一段倍率所需秒數
+const WEAPONS = {
+  operator: { name: 'Operator', zooms: [2.5, 5], fireInterval: 1 / 0.6, hipSpread: 5, scopeTime: 0.2 },
+  marshal: { name: 'Marshal', zooms: [3.5], fireInterval: 1 / 1.5, hipSpread: 1.5, scopeTime: 0.15 },
+};
+
+// 狙擊模式的得分：開槍越快加分越多（狙擊節奏較慢，所以給較長的加分時間）
+const sniperPoints = (ttk) => 100 + Math.round(clamp(1 - ttk / 2.5, 0, 1) * 100);
 
 const MODES = [
   {
@@ -159,5 +174,80 @@ const MODES = [
       this.next = g.time + rand(0.6, 1.6);
     },
     points(ttk) { return Math.max(10, Math.round(1000 - ttk * 1000)); },
+  },
+  {
+    id: 'op-flick',
+    name: 'Operator Flick',
+    tag: '狙擊 · 甩狙',
+    desc: '使用 Operator（右鍵 2.5× / 5× 開鏡、射速慢）。目標隨機出現在各處，練習「甩過去 → 開鏡 → 開槍」的快狙節奏。未開鏡射擊幾乎打不中。',
+    kind: 'click',
+    weapon: 'operator',
+    setup(g) { this.spawnOne(g); },
+    spawnOne(g) {
+      const r = 0.8 * g.scale;
+      g.spawn({ ...g.findSpot({ yaw: [-40, 40], pitch: [-7, 7], r, minFromCam: 10 }), r });
+    },
+    onHit(g, t) {
+      g.remove(t);
+      this.spawnOne(g);
+    },
+    points: sniperPoints,
+  },
+  {
+    id: 'marshal-peek',
+    name: 'Marshal Peek',
+    tag: '狙擊 · 架槍',
+    desc: '使用 Marshal（3.5× 開鏡）架住兩面牆之間的通道。敵人會從牆後橫越或探頭後縮回，在他躲回掩體前擊倒他。',
+    kind: 'click',
+    weapon: 'marshal',
+    GAP: 4, // 通道半寬（度）
+    setup(g) {
+      g.walls = [
+        { yaw: [-24, -this.GAP], pitch: [-8, 10] },
+        { yaw: [this.GAP, 24], pitch: [-8, 10] },
+      ];
+      this.target = null;
+      this.next = rand(0.8, 1.6);
+    },
+    update(g, dt) {
+      const t = this.target;
+      if (!t) {
+        if (g.time >= this.next) {
+          const dirn = Math.random() < 0.5 ? 1 : -1;
+          const r = 0.5 * g.scale;
+          const jiggle = Math.random() < 0.3; // 探頭後縮回
+          this.target = g.spawn({
+            yaw: -dirn * (this.GAP + r + 1.5),
+            pitch: rand(-0.5, 1.5),
+            r,
+            vy: dirn * rand(7, 13),
+            turnAt: jiggle ? -dirn * (this.GAP - rand(1, 2.5)) : null,
+            seen: false,
+          });
+        }
+        return;
+      }
+      t.yaw += t.vy * dt;
+      // 從牆後出現的瞬間才開始計算擊殺時間
+      if (!t.seen && Math.abs(t.yaw) < this.GAP + t.r) { t.seen = true; t.born = g.time; }
+      if (t.turnAt != null && (t.vy > 0 ? t.yaw >= t.turnAt : t.yaw <= t.turnAt)) {
+        t.vy = -t.vy;
+        t.turnAt = null;
+      }
+      if (Math.abs(t.yaw) > this.GAP + t.r + 1.5 && Math.sign(t.yaw) === Math.sign(t.vy)) {
+        g.remove(t);
+        this.target = null;
+        g.misses++;
+        g.expired++;
+        this.next = g.time + rand(0.6, 1.6);
+      }
+    },
+    hittable(g, t) { return Math.abs(t.yaw) < this.GAP; },
+    onHit(g, t) {
+      g.remove(t);
+      this.target = null;
+      this.next = g.time + rand(0.6, 1.6);
+    },
+    points: sniperPoints,
   },
 ];

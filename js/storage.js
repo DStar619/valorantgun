@@ -12,25 +12,35 @@ const DEFAULT_SETTINGS = {
   duration: 60,
   targetScale: 1,
   volume: 0.4,
-  xhColor: '#00ff9c',
-  xhLength: 5,
-  xhThickness: 2,
-  xhGap: 3,
-  xhOutline: true,
-  xhDot: false,
+  scopedSens: 1,      // 遊戲內「開鏡靈敏度倍率」
+  scopeHold: false,   // true：按住右鍵開鏡；false：點一下切換（Operator 會循環 2.5× → 5× → 關）
+  crosshair: '0;P;c;8;u;00FF9CFF;o;0.85;0t;2;0l;5;0o;3;0a;1;0f;0;1b;0', // VALORANT 準星代碼
 };
+
+// v1.0 的準星設定（xhColor 等）轉成準星代碼
+function migrateSettings(s) {
+  if ('xhColor' in s) {
+    const hex = String(s.xhColor).replace('#', '').toUpperCase();
+    s.crosshair = [
+      '0;P;c;8;u', `${hex}FF`, 'h', s.xhOutline ? 1 : 0, 'o', 0.85, 'd', s.xhDot ? 1 : 0, 'z', s.xhThickness,
+      '0t', s.xhThickness, '0l', s.xhLength, '0o', s.xhGap, '0a', 1, '0f', 0, '1b', 0,
+    ].join(';');
+    for (const k of ['xhColor', 'xhLength', 'xhThickness', 'xhGap', 'xhOutline', 'xhDot']) delete s[k];
+  }
+  return s;
+}
 
 // 所有資料只存在瀏覽器 localStorage
 const Store = (() => {
   const KEY = 'valorantgun:v1';
-  const MAX_HISTORY = 100;
+  const MAX_HISTORY = 1000;
   const data = { settings: { ...DEFAULT_SETTINGS }, best: {}, history: [] };
 
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      Object.assign(data.settings, parsed.settings || {});
+      Object.assign(data.settings, migrateSettings({ ...(parsed.settings || {}) }));
       data.best = parsed.best || {};
       data.history = Array.isArray(parsed.history) ? parsed.history : [];
     }
@@ -59,6 +69,10 @@ const Store = (() => {
       return { isBest, prev };
     },
     history() { return data.history; },
+    // 某模式＋秒數的所有紀錄，依時間由舊到新
+    runs(mode, duration) {
+      return data.history.filter((r) => r.mode === mode && r.duration === duration).reverse();
+    },
     clearRecords() { data.best = {}; data.history = []; save(); },
   };
 })();

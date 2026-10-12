@@ -57,6 +57,14 @@ class Game {
     this.lastHit = 0;
     this.trackOn = 0;
     this.trackTotal = 0;
+    this.walls = [];
+    // 狙擊槍狀態
+    this.weapon = this.mode.weapon ? WEAPONS[this.mode.weapon] : null;
+    this.zoomIdx = 0;      // 0 = 未開鏡，1 = 第一段倍率…
+    this.zoomCur = 1;      // 目前實際倍率（開鏡動畫中會介於兩段之間）
+    this.readyAt = 0;      // 下一發可以開槍的時間（上膛）
+    this.rightHeld = false;
+    this.view.setZoom(1);
     this.mode.setup(this);
   }
 
@@ -100,6 +108,8 @@ class Game {
       this.el.desc.textContent = this.mode.desc;
       this.el.resume.textContent = '開始';
     } else if (state === 'paused') {
+      this.rightHeld = false;
+      this.setZoomIdx(0);
       this.el.title.textContent = '已暫停';
       this.el.desc.textContent = '點擊畫面或按「繼續」回到訓練。';
       this.el.resume.textContent = '繼續';
@@ -148,13 +158,19 @@ class Game {
       const mx = e.movementX, my = e.movementY;
       // 部分瀏覽器在非 Raw Input 時偶爾會送出異常的大位移，直接忽略
       if (Math.abs(mx) > 1500 || Math.abs(my) > 1500) return;
-      const k = Store.settings.sens * VAL_YAW;
-      this.cam.rotate(mx * k, -my * k);
+      this.cam.rotate(mx * this.degPerCount(), -my * this.degPerCount());
     });
 
     document.addEventListener('mousedown', (e) => {
-      if (!this.active || !this.isLocked() || e.button !== 0) return;
-      if (this.state === 'running') this.shoot();
+      if (!this.active || !this.isLocked()) return;
+      if (e.button === 0 && this.state === 'running') this.shoot();
+      if (e.button === 2 && (this.state === 'running' || this.state === 'countdown')) this.onScopeDown();
+    });
+    document.addEventListener('mouseup', (e) => {
+      if (e.button === 2) this.onScopeUp();
+    });
+    document.addEventListener('contextmenu', (e) => {
+      if (this.active) e.preventDefault();
     });
 
     this.el.overlay.addEventListener('click', (e) => {
@@ -197,12 +213,72 @@ class Game {
     return spot;
   }
 
+  // ---------- 狙擊鏡 ----------
+  // 每個滑鼠 count 轉動的角度；開鏡時依遊戲的焦距縮放（倍率 1 時，畫面上的移動距離與未開鏡相同）
+  degPerCount() {
+    const k = Store.settings.sens * VAL_YAW;
+    return this.zoomCur > 1 ? k * (Number(Store.settings.scopedSens) || 1) / this.zoomCur : k;
+  }
+
+  targetZoom() { return this.zoomIdx ? this.weapon.zooms[this.zoomIdx - 1] : 1; }
+
+  setZoomIdx(i) {
+    this.zoomIdx = i;
+    if (i === 0) this.zoomCur = 1; // 退出瞄準鏡是瞬間的
+  }
+
+  isFullyScoped() { return this.zoomIdx > 0 && Math.abs(this.zoomCur - this.targetZoom()) < 1e-3; }
+
+  onScopeDown() {
+    this.rightHeld = true;
+    if (!this.weapon || this.time < this.readyAt) return; // 上膛中無法開鏡
+    if (Store.settings.scopeHold) this.setZoomIdx(1);
+    else this.setZoomIdx((this.zoomIdx + 1) % (this.weapon.zooms.length + 1));
+  }
+
+  onScopeUp() {
+    this.rightHeld = false;
+    if (this.weapon && Store.settings.scopeHold) this.setZoomIdx(0);
+  }
+
+  updateZoom(dt) {
+    if (!this.weapon) return;
+    // 按住模式：上膛完成後若仍按著右鍵，自動重新開鏡
+    if (Store.settings.scopeHold && this.rightHeld && this.zoomIdx === 0 && this.time >= this.readyAt) this.setZoomIdx(1);
+    const target = this.targetZoom();
+    if (this.zoomCur === target) return;
+    // 在對數空間等速放大：到第一段倍率剛好花 scopeTime 秒
+    const speed = Math.log(this.weapon.zooms[0]) / this.weapon.scopeTime;
+    const cur = Math.log(this.zoomCur), goal = Math.log(target);
+    const next = cur + Math.sign(goal - cur) * speed * dt;
+    this.zoomCur = Math.abs(goal - cur) <= speed * dt ? target : Math.exp(next);
+  }
+
+  // 未開鏡時的散布：在半徑 spread 度的圓內隨機偏移
+  spreadDir(spread) {
+    const a = Math.random() * Math.PI * 2;
+    const d = spread * Math.sqrt(Math.random()) * DEG;
+    const { f, r, u } = this.cam;
+    const x = Math.tan(d) * Math.cos(a), y = Math.tan(d) * Math.sin(a);
+    const v = [f[0] + r[0] * x + u[0] * y, f[1] + r[1] * x + u[1] * y, f[2] + r[2] * x + u[2] * y];
+    const len = Math.hypot(v[0], v[1], v[2]);
+    return [v[0] / len, v[1] / len, v[2] / len];
+  }
+
   // ---------- 射擊 ----------
   shoot() {
     if (this.mode.kind === 'tracking') return;
+    let dir = this.cam.f;
+    if (this.weapon) {
+      if (this.time < this.readyAt) return; // 上膛中，扣扳機沒有反應
+      if (!this.isFullyScoped()) dir = this.spreadDir(this.weapon.hipSpread);
+      this.readyAt = this.time + this.weapon.fireInterval;
+      this.setZoomIdx(0); // 開槍後自動退出瞄準鏡
+    }
     let hit = null, hitAng = Infinity;
     for (const t of this.targets) {
-      const a = angleBetween(this.cam.f, Vec.dir(t.yaw, t.pitch));
+      if (this.mode.hittable && !this.mode.hittable(this, t)) continue;
+      const a = angleBetween(dir, Vec.dir(t.yaw, t.pitch));
       if (a <= t.r && a < hitAng) { hit = t; hitAng = a; }
     }
     if (!hit) {
@@ -237,6 +313,7 @@ class Game {
   }
 
   step(dt) {
+    if (this.state === 'countdown' || this.state === 'running') this.updateZoom(dt);
     if (this.state === 'countdown') {
       this.countdownLeft -= dt;
       const n = Math.ceil(this.countdownLeft);
@@ -257,11 +334,41 @@ class Game {
 
   render() {
     const v = this.view;
+    v.setZoom(this.zoomCur);
     v.drawEnvironment(this.cam);
     for (const t of this.targets) v.drawTarget(t, this.cam, this.time);
+    for (const w of this.walls) v.drawWall(w, this.cam); // 牆畫在目標之後，擋住牆後的目標
     this.fx = this.fx.filter((f) => this.time - f.t < 0.25);
     for (const f of this.fx) v.drawEffect(f, this.cam, this.time);
-    drawCrosshair(v.ctx, v.W / 2, v.H / 2, Store.settings, v.dpr);
+    const xh = Crosshair.current();
+    if (this.zoomCur > 1) {
+      const progress = Math.min(1, Math.log(this.zoomCur) / Math.log(this.weapon.zooms[0]));
+      v.drawScope(progress);
+      if (this.isFullyScoped()) Crosshair.drawScopeDot(v.ctx, v.W / 2, v.H / 2, xh, v.dpr);
+    } else {
+      Crosshair.draw(v.ctx, v.W / 2, v.H / 2, xh, v.dpr);
+    }
+    if (this.weapon) this.drawWeaponHud();
+  }
+
+  // 畫面下方：武器名稱、倍率、上膛進度
+  drawWeaponHud() {
+    const { ctx, W, H, dpr } = this.view;
+    const w = 180 * dpr, h = 4 * dpr;
+    const x = W / 2 - w / 2, y = H - 48 * dpr;
+    const left = Math.max(0, this.readyAt - this.time);
+    const ready = left <= 0;
+    ctx.save();
+    ctx.font = `700 ${18 * dpr}px Rajdhani, system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ece8e1';
+    const zoom = this.zoomIdx ? ` · ${this.targetZoom()}×` : '';
+    ctx.fillText(`${this.weapon.name.toUpperCase()}${zoom}`, W / 2, y - 10 * dpr);
+    ctx.fillStyle = 'rgba(236,232,225,0.2)';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = ready ? '#3ee8a5' : '#ff4655';
+    ctx.fillRect(x, y, w * (1 - left / this.weapon.fireInterval), h);
+    ctx.restore();
   }
 
   // ---------- 統計 ----------
@@ -306,6 +413,7 @@ class Game {
       bestMs: this.ttks.length ? Math.min(...this.ttks) * 1000 : null,
       trackOn: this.trackOn,
       sens: Store.settings.sens,
+      weapon: this.weapon ? this.weapon.name : null,
       date: Date.now(),
     };
   }

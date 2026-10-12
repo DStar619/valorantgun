@@ -53,11 +53,16 @@ class View {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.dpr = 1;
-    this.setFov(VAL_FOV);
+    this.zoom = 1;
     this.resize();
   }
 
-  setFov(hfov) { this.tanH = Math.tan(hfov / 2 * DEG); }
+  // 放大倍率（狙擊鏡）：以焦距縮放，zoom = 2.5 表示畫面中央放大 2.5 倍
+  setZoom(zoom) {
+    this.zoom = zoom;
+    this.tanH = Math.tan(VAL_FOV / 2 * DEG) / zoom;
+    this.k = this.W / 2 / this.tanH;
+  }
 
   resize() {
     this.dpr = window.devicePixelRatio || 1;
@@ -67,7 +72,7 @@ class View {
     this.canvas.height = Math.round(h * this.dpr);
     this.W = this.canvas.width;
     this.H = this.canvas.height;
-    this.k = this.W / 2 / this.tanH; // 每單位切平面距離對應的像素
+    this.setZoom(this.zoom); // 重新計算 k：每單位切平面距離對應的像素
   }
 
   // 方向向量 -> 螢幕座標；在鏡頭後方時回傳 null
@@ -118,6 +123,54 @@ class View {
     ctx.stroke();
   }
 
+  // 掩體牆：yaw / pitch 範圍圍成的面，沿邊緣取樣以符合透視
+  drawWall(w, cam) {
+    const pts = [];
+    const edge = (fn, from, to) => {
+      const step = (to - from) / 12;
+      for (let i = 0; i <= 12; i++) pts.push(fn(from + step * i));
+    };
+    edge((t) => [t, w.pitch[1]], w.yaw[0], w.yaw[1]);
+    edge((t) => [w.yaw[1], t], w.pitch[1], w.pitch[0]);
+    edge((t) => [t, w.pitch[0]], w.yaw[1], w.yaw[0]);
+    edge((t) => [w.yaw[0], t], w.pitch[0], w.pitch[1]);
+    const proj = pts.map(([y, p]) => this.project(Vec.dir(y, p), cam));
+    if (proj.some((p) => !p)) return;
+    const { ctx } = this;
+    ctx.beginPath();
+    proj.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+    ctx.closePath();
+    ctx.fillStyle = '#2a3b4a';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(236,232,225,0.25)';
+    ctx.lineWidth = 2 * this.dpr;
+    ctx.stroke();
+  }
+
+  // 狙擊鏡畫面：圓形視野 + 細十字線；alpha 用於開鏡過程的淡入
+  drawScope(alpha) {
+    const { ctx, W, H, dpr } = this;
+    const cx = W / 2, cy = H / 2, R = H * 0.47;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.rect(0, 0, W, H);
+    ctx.arc(cx, cy, R, 0, Math.PI * 2, true);
+    ctx.fill('evenodd');
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath();
+    ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+    ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+    ctx.stroke();
+    ctx.lineWidth = 4 * dpr;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   drawTarget(t, cam, now) {
     const p = this.project(Vec.dir(t.yaw, t.pitch), cam);
     if (!p) return;
@@ -151,31 +204,6 @@ class View {
     ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
     ctx.stroke();
   }
-}
-
-// ---------- 準星（VALORANT 風格：內線 + 外框 + 中心點） ----------
-function drawCrosshair(ctx, cx, cy, s, scale) {
-  const len = s.xhLength * scale;
-  const th = Math.max(1, Math.round(s.xhThickness * scale));
-  const gap = s.xhGap * scale;
-  cx = Math.round(cx);
-  cy = Math.round(cy);
-  const half = th / 2;
-  const rects = [];
-  if (s.xhDot) rects.push([cx - half, cy - half, th, th]);
-  if (len > 0) {
-    rects.push([cx + gap, cy - half, len, th]);
-    rects.push([cx - gap - len, cy - half, len, th]);
-    rects.push([cx - half, cy - gap - len, th, len]);
-    rects.push([cx - half, cy + gap, th, len]);
-  }
-  if (s.xhOutline) {
-    const o = Math.max(1, Math.round(scale));
-    ctx.fillStyle = 'rgba(0,0,0,0.85)';
-    for (const [x, y, w, h] of rects) ctx.fillRect(x - o, y - o, w + o * 2, h + o * 2);
-  }
-  ctx.fillStyle = s.xhColor;
-  for (const [x, y, w, h] of rects) ctx.fillRect(x, y, w, h);
 }
 
 // ---------- 音效（WebAudio 合成，不需要音檔） ----------
