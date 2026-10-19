@@ -13,7 +13,8 @@ const DEFAULT_SETTINGS = {
   targetScale: 1,
   volume: 0.4,
   scopedSens: 1,      // 遊戲內「開鏡靈敏度倍率」
-  scopeHold: false,   // true：按住右鍵開鏡；false：點一下切換（Operator 會循環 2.5× → 5× → 關）
+  scopeHold: false,
+  bloomAffectsHit: false, // true：連點太快時子彈依目前開火誤差隨機偏移（步槍模式）   // true：按住右鍵開鏡；false：點一下切換（Operator 會循環 2.5× → 5× → 關）
   crosshair: '0;P;c;8;u;00FF9CFF;o;0.85;0t;2;0l;5;0o;3;0a;1;0f;0;1b;0', // VALORANT 準星代碼
 };
 

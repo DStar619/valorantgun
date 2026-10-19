@@ -256,7 +256,7 @@ class Game {
     this.zoomCur = Math.abs(goal - cur) <= speed * dt ? target : Math.exp(next);
   }
 
-  // 未開鏡時的散布：在半徑 spread 度的圓內隨機偏移
+  // 散布（狙擊未開鏡、步槍開火誤差）：在半徑 spread 度的圓內隨機偏移
   spreadDir(spread) {
     const a = Math.random() * Math.PI * 2;
     const d = spread * Math.sqrt(Math.random()) * DEG;
@@ -288,6 +288,8 @@ class Game {
       if (!this.isFullyScoped()) dir = this.spreadDir(this.weapon.hipSpread);
       this.readyAt = this.time + this.weapon.fireInterval;
       this.setZoomIdx(0); // 開槍後自動退出瞄準鏡
+    } else if (Store.settings.bloomAffectsHit && this.bloom > 0) {
+      dir = this.spreadDir(this.bloom); // 步槍：依開槍前累積的誤差偏移，第一發（誤差 0）一定準
     }
     this.addBloom();
     let hit = null, hitAng = Infinity;
