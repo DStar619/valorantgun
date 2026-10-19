@@ -6,7 +6,7 @@
 //   onHit(g, t)       擊中目標
 //   update(g, dt)     每幀更新（可選）
 //   points(ttk)       擊中得分（可選，預設依擊殺速度加分）
-//   weapon            'operator' | 'marshal'（可選，未設定 = 步槍，無射速限制）
+//   weapon            'operator' | 'marshal' | 'outlaw'（可選，未設定 = 步槍，無射速限制）
 //   hittable(g, t)    目標此刻是否打得到（可選，例如被牆擋住時回傳 false）
 // g 為 Game 實例，見 game.js
 
@@ -15,9 +15,17 @@
 //   fireInterval  兩發之間的秒數（Operator 射速 0.6 發/秒、Marshal 1.5 發/秒）
 //   hipSpread     未開鏡射擊的散布半徑（度）
 //   scopeTime     開鏡到第一段倍率所需秒數
+//   mag           彈匣容量（可選，未設定 = 每發之間只算上膛時間，不換彈）
+//   reloadTime    彈匣打空後的換彈秒數（搭配 mag）
+//   keepScope     開槍後維持開鏡（可選，預設開槍後自動退鏡）
 const WEAPONS = {
   operator: { name: 'Operator', zooms: [2.5, 5], fireInterval: 1 / 0.6, hipSpread: 5, scopeTime: 0.2 },
   marshal: { name: 'Marshal', zooms: [3.5], fireInterval: 1 / 1.5, hipSpread: 1.5, scopeTime: 0.15 },
+  // Outlaw：雙管，2 發彈匣、射速 2.75 發/秒、開槍不退鏡，打空後換彈 3.8 秒
+  outlaw: {
+    name: 'Outlaw', zooms: [3.5], fireInterval: 1 / 2.75, hipSpread: 3, scopeTime: 0.15,
+    mag: 2, reloadTime: 3.8, keepScope: true,
+  },
 };
 
 // 狙擊模式的得分：開槍越快加分越多（狙擊節奏較慢，所以給較長的加分時間）
@@ -247,6 +255,29 @@ const MODES = [
       g.remove(t);
       this.target = null;
       this.next = g.time + rand(0.6, 1.6);
+    },
+    points: sniperPoints,
+  },
+  {
+    id: 'outlaw-double',
+    name: 'Outlaw Double',
+    tag: '狙擊 · 連射',
+    desc: '使用 Outlaw（3.5× 開鏡、2 發彈匣、開槍不退鏡）。兩個目標會成對出現，開鏡後連開兩槍把兩個都打掉；打空會自動換彈 3.8 秒，所以每一發都要算數。',
+    kind: 'click',
+    weapon: 'outlaw',
+    setup(g) { this.spawnPair(g); },
+    spawnPair(g) {
+      const r = 0.6 * g.scale;
+      const a = g.findSpot({ yaw: [-35, 35], pitch: [-6, 6], r, minFromCam: 10 });
+      // 第二個目標在第一個附近（開鏡後的視野內），讓兩發之間只需要小幅修正
+      const ang = Math.random() * Math.PI * 2;
+      const d = rand(2.5, 5);
+      g.spawn({ ...a, r });
+      g.spawn({ yaw: a.yaw + Math.cos(ang) * d, pitch: clamp(a.pitch + Math.sin(ang) * d * 0.6, -9, 9), r });
+    },
+    onHit(g, t) {
+      g.remove(t);
+      if (!g.targets.length) this.spawnPair(g);
     },
     points: sniperPoints,
   },
