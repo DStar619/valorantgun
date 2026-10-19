@@ -47,11 +47,36 @@ class Camera {
   }
 }
 
+// ---------- 場景資料（只計算一次） ----------
+const TARGET_COLORS = {
+  normal: { light: '#ffc2c7', base: '#ff4655', dark: '#8f1f2b', glow: 'rgba(255,70,85,0.28)' },
+  hot: { light: '#c9fff6', base: '#21d3b4', dark: '#0b6d5d', glow: 'rgba(33,211,180,0.28)' },
+};
+
+// 地板網格：眼睛高度 EYE 公尺、間距 STEP 公尺；每條線切成小段，依距離分到 4 組不同透明度
+const FLOOR_GRID = (() => {
+  const EYE = 2, STEP = 5, RANGE = 100;
+  const buckets = [0.14, 0.09, 0.055, 0.03].map((alpha) => ({ alpha, segs: [] }));
+  const add = (a, b) => {
+    const mid = Math.hypot((a[0] + b[0]) / 2, (a[2] + b[2]) / 2);
+    const i = Math.min(buckets.length - 1, Math.floor(mid / (RANGE / buckets.length)));
+    buckets[i].segs.push([a, b]);
+  };
+  for (let c = -RANGE; c <= RANGE; c += STEP) {
+    for (let t = -RANGE; t < RANGE; t += STEP) {
+      add([c, -EYE, t], [c, -EYE, t + STEP]);
+      add([t, -EYE, c], [t + STEP, -EYE, c]);
+    }
+  }
+  return buckets;
+})();
+
 // ---------- 透視投影（與遊戲相同的水平 FOV） ----------
 class View {
   constructor(canvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    // alpha:false + desynchronized：降低繪製延遲（練槍時輸入延遲越低越好）
+    this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true }) || canvas.getContext('2d');
     this.dpr = 1;
     this.zoom = 1;
     this.resize();
@@ -89,37 +114,53 @@ class View {
   // 角半徑（度）在距離 z 時的螢幕半徑
   radiusPx(angDeg, z) { return Math.tan(angDeg * DEG) / z * this.k; }
 
-  // 背景：漸層 + 經緯網格，讓轉動視角時有參考
-  drawEnvironment(cam) {
-    const { ctx, W, H } = this;
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, '#16232f');
-    g.addColorStop(1, '#0b1219');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
+  // 背景：天空 / 地面漸層 + 透視地板網格（越遠越淡），模擬訓練場
+  // headLine：在頭線高度（pitch 0）畫紅線（Headshot Line 模式用）
+  drawEnvironment(cam, headLine) {
+    const { ctx, W, H, k } = this;
+    // 鏡頭沒有翻滾，所以地平線是一條水平線
+    const yh = H / 2 + Math.tan(cam.pitch * DEG) * k;
+    const hz = clamp(yh, 0, H);
 
+    const sky = ctx.createLinearGradient(0, Math.min(0, yh - H), 0, Math.max(hz, 1));
+    sky.addColorStop(0, '#0a131b');
+    sky.addColorStop(1, '#1d2d3b');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, hz);
+    const floor = ctx.createLinearGradient(0, hz, 0, Math.max(H, yh + H * 0.6));
+    floor.addColorStop(0, '#17232e');
+    floor.addColorStop(1, '#0b1117');
+    ctx.fillStyle = floor;
+    ctx.fillRect(0, hz, W, H - hz);
+
+    // 地平線光暈
+    if (yh > -40 && yh < H + 40) {
+      const glow = ctx.createLinearGradient(0, yh - 40 * this.dpr, 0, yh + 40 * this.dpr);
+      glow.addColorStop(0, 'rgba(255,70,85,0)');
+      glow.addColorStop(0.5, 'rgba(255,70,85,0.07)');
+      glow.addColorStop(1, 'rgba(255,70,85,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, yh - 40 * this.dpr, W, 80 * this.dpr);
+    }
+
+    // 地板網格：依距離分組，每組一次 stroke
     ctx.lineWidth = Math.max(1, this.dpr);
-    for (let pitch = -60; pitch <= 60; pitch += 10) {
-      ctx.strokeStyle = pitch === 0 ? 'rgba(255,70,85,0.35)' : 'rgba(236,232,225,0.06)';
-      this.polyline(cam, (t) => [t, pitch], -180, 180, 3);
+    for (const bucket of FLOOR_GRID) {
+      ctx.strokeStyle = `rgba(236,232,225,${bucket.alpha})`;
+      ctx.beginPath();
+      for (const [a, b] of bucket.segs) {
+        const pa = this.project(a, cam), pb = this.project(b, cam);
+        if (!pa || !pb) continue;
+        ctx.moveTo(pa.x, pa.y);
+        ctx.lineTo(pb.x, pb.y);
+      }
+      ctx.stroke();
     }
-    ctx.strokeStyle = 'rgba(236,232,225,0.06)';
-    for (let yaw = -180; yaw < 180; yaw += 10) {
-      this.polyline(cam, (t) => [yaw, t], -60, 60, 3);
-    }
-  }
 
-  polyline(cam, fn, from, to, step) {
-    const { ctx } = this;
+    ctx.strokeStyle = headLine ? 'rgba(255,70,85,0.55)' : 'rgba(236,232,225,0.12)';
     ctx.beginPath();
-    let drawing = false;
-    for (let t = from; t <= to; t += step) {
-      const [yaw, pitch] = fn(t);
-      const p = this.project(Vec.dir(yaw, pitch), cam);
-      if (!p) { drawing = false; continue; }
-      if (drawing) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y);
-      drawing = true;
-    }
+    ctx.moveTo(0, yh);
+    ctx.lineTo(W, yh);
     ctx.stroke();
   }
 
@@ -175,34 +216,83 @@ class View {
     const p = this.project(Vec.dir(t.yaw, t.pitch), cam);
     if (!p) return;
     const r = this.radiusPx(t.r, p.z);
-    if (r < 0.5 || p.x < -r || p.x > this.W + r || p.y < -r || p.y > this.H + r) return;
+    if (r < 0.5 || p.x < -r * 2 || p.x > this.W + r * 2 || p.y < -r * 2 || p.y > this.H + r * 2) return;
     const { ctx } = this;
-    // 出生時的放大動畫
-    const s = clamp((now - t.born) / 0.08, 0.4, 1);
+    // 出生時的彈出動畫（稍微放大後回到原尺寸）
+    const age = (now - t.born) / 0.12;
+    const s = age >= 1 ? 1 : 0.5 + 0.6 * Math.sin(Math.max(0, age) * Math.PI * 0.75);
     const rr = r * s;
-    const grad = ctx.createRadialGradient(p.x - rr * 0.35, p.y - rr * 0.35, rr * 0.1, p.x, p.y, rr);
-    grad.addColorStop(0, t.hot ? '#9ffff0' : '#ff9aa3');
-    grad.addColorStop(0.6, t.hot ? '#21d3b4' : '#ff4655');
-    grad.addColorStop(1, t.hot ? '#0e7f6c' : '#a32632');
+    const pal = t.hot ? TARGET_COLORS.hot : TARGET_COLORS.normal;
+
+    // 外圍光暈
+    const halo = ctx.createRadialGradient(p.x, p.y, rr * 0.8, p.x, p.y, rr * 1.9);
+    halo.addColorStop(0, pal.glow);
+    halo.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rr * 1.9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 球體明暗
+    const grad = ctx.createRadialGradient(p.x - rr * 0.35, p.y - rr * 0.4, rr * 0.05, p.x, p.y, rr);
+    grad.addColorStop(0, pal.light);
+    grad.addColorStop(0.55, pal.base);
+    grad.addColorStop(1, pal.dark);
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(p.x, p.y, rr, 0, Math.PI * 2);
     ctx.fill();
+
+    // 高光
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.beginPath();
+    ctx.ellipse(p.x - rr * 0.32, p.y - rr * 0.38, rr * 0.22, rr * 0.13, -0.6, 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  // 擊中特效：擴散的圓環
+  // 擊中特效：擴散圓環 + 碎片 + 飄起的分數
   drawEffect(fx, cam, now) {
     const age = now - fx.t;
-    if (age > 0.25) return;
     const p = this.project(Vec.dir(fx.yaw, fx.pitch), cam);
     if (!p) return;
-    const r = this.radiusPx(fx.r, p.z) * (1 + age * 6);
-    const { ctx } = this;
-    ctx.strokeStyle = `rgba(255,255,255,${1 - age / 0.25})`;
-    ctx.lineWidth = 2 * this.dpr;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-    ctx.stroke();
+    const { ctx, dpr } = this;
+    const r = this.radiusPx(fx.r, p.z);
+    ctx.save();
+    if (age < 0.25) {
+      ctx.strokeStyle = `rgba(255,255,255,${1 - age / 0.25})`;
+      ctx.lineWidth = 2 * dpr;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r * (1 + age * 6), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (age < 0.4) {
+      const a = 1 - age / 0.4;
+      ctx.fillStyle = fx.color;
+      ctx.globalAlpha = a;
+      for (const part of fx.parts) {
+        const d = r + part.speed * age * dpr;
+        const size = Math.max(1.5, part.size * dpr * a);
+        ctx.fillRect(p.x + Math.cos(part.angle) * d - size / 2, p.y + Math.sin(part.angle) * d - size / 2 + 60 * age * age * dpr, size, size);
+      }
+    }
+    if (fx.text && age < 0.7) {
+      ctx.globalAlpha = 1 - age / 0.7;
+      ctx.font = `700 ${16 * dpr}px Rajdhani, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ece8e1';
+      ctx.fillText(fx.text, p.x, p.y - r - (10 + age * 40) * dpr);
+    }
+    ctx.restore();
+  }
+
+  // 每秒幀數（設定開啟時顯示在左上角）
+  drawFps(fps) {
+    const { ctx, dpr } = this;
+    ctx.save();
+    ctx.font = `600 ${12 * dpr}px ui-monospace, Consolas, monospace`;
+    ctx.fillStyle = 'rgba(236,232,225,0.7)';
+    ctx.fillText(`${Math.round(fps)} FPS`, 12 * dpr, 22 * dpr);
+    ctx.restore();
   }
 }
 

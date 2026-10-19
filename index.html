@@ -14,13 +14,25 @@
   <!-- 主選單 -->
   <section id="menu" class="screen active">
     <header class="brand">
-      <h1>VALORANT<span>GUN</span></h1>
-      <p>特戰英豪練槍場 · 使用與遊戲相同的靈敏度（yaw 0.07）與 103° 水平 FOV</p>
+      <div class="brand-text">
+        <p class="eyebrow">VALORANT AIM TRAINER</p>
+        <h1>VALORANT<span>GUN</span></h1>
+        <p>特戰英豪練槍場 · 使用與遊戲相同的靈敏度（yaw 0.07）與 103° 水平 FOV</p>
+      </div>
+      <div class="brand-stats" id="brand-stats"></div>
     </header>
 
     <div class="layout">
       <main class="col">
-        <h2>訓練模式</h2>
+        <div class="section-head">
+          <h2>訓練模式</h2>
+          <div class="tabs" role="tablist" id="mode-filter">
+            <button role="tab" data-filter="all" aria-selected="true">全部</button>
+            <button role="tab" data-filter="rifle" aria-selected="false">步槍</button>
+            <button role="tab" data-filter="sniper" aria-selected="false">狙擊</button>
+          </div>
+        </div>
+        <p class="section-hint">點擊卡片或按數字鍵 <kbd>1</kbd>–<kbd>8</kbd> 開始</p>
         <div id="mode-list" class="mode-grid"></div>
 
         <h2>成績趨勢</h2>
@@ -45,7 +57,12 @@
       </main>
 
       <aside class="col side">
-        <div class="panel">
+        <div class="tabs side-tabs" role="tablist" id="side-tabs">
+          <button role="tab" data-tab="sens" aria-selected="true">靈敏度</button>
+          <button role="tab" data-tab="train" aria-selected="false">訓練</button>
+          <button role="tab" data-tab="xh" aria-selected="false">準星</button>
+        </div>
+        <div class="panel tab-panel" data-panel="sens">
           <h3>靈敏度</h3>
           <label class="row">遊戲靈敏度 <input type="number" data-setting="sens" step="0.001" min="0.01" max="10"></label>
           <label class="row">滑鼠 DPI <input type="number" data-setting="dpi" step="50" min="100" max="32000"></label>
@@ -71,7 +88,7 @@
           </details>
         </div>
 
-        <div class="panel">
+        <div class="panel tab-panel" data-panel="train" hidden>
           <h3>訓練設定</h3>
           <label class="row">每場時間
             <select data-setting="duration">
@@ -83,9 +100,10 @@
           </label>
           <label class="row">目標大小 <input type="range" data-setting="targetScale" min="0.5" max="2" step="0.1"><output data-for="targetScale"></output></label>
           <label class="row">音量 <input type="range" data-setting="volume" min="0" max="1" step="0.05"><output data-for="volume"></output></label>
+          <label class="row check"><input type="checkbox" data-setting="showFps"> 遊戲中顯示 FPS</label>
         </div>
 
-        <div class="panel">
+        <div class="panel tab-panel" data-panel="xh" hidden>
           <h3>準星</h3>
           <div class="xh-preview">
             <canvas id="xh-preview" width="240" height="110"></canvas>

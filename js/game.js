@@ -290,10 +290,16 @@ class Game {
     this.hits++;
     this.ttks.push(ttk);
     this.lastHit = this.time;
-    this.score += this.mode.points
+    const pts = this.mode.points
       ? this.mode.points(ttk)
       : 100 + Math.round(clamp(1 - ttk / 1.2, 0, 1) * 50);
-    this.fx.push({ yaw: hit.yaw, pitch: hit.pitch, r: hit.r, t: this.time });
+    this.score += pts;
+    const parts = [];
+    for (let i = 0; i < 10; i++) parts.push({ angle: Math.random() * Math.PI * 2, speed: rand(60, 160), size: rand(2, 4) });
+    this.fx.push({
+      yaw: hit.yaw, pitch: hit.pitch, r: hit.r, t: this.time,
+      parts, color: hit.hot ? TARGET_COLORS.hot.base : TARGET_COLORS.normal.base, text: `+${pts}`,
+    });
     Sfx.hit();
     this.mode.onHit(this, hit);
   }
@@ -302,6 +308,7 @@ class Game {
   frame(ts) {
     const dt = this.lastTs ? Math.min(0.25, (ts - this.lastTs) / 1000) : 0;
     this.lastTs = ts;
+    if (dt > 0) this.fps = this.fps ? this.fps * 0.95 + (1 / dt) * 0.05 : 1 / dt; // 平滑後的 FPS
     if (this.active) {
       this.step(dt);
       if (this.active) {
@@ -335,10 +342,10 @@ class Game {
   render() {
     const v = this.view;
     v.setZoom(this.zoomCur);
-    v.drawEnvironment(this.cam);
+    v.drawEnvironment(this.cam, this.mode.headLine);
     for (const t of this.targets) v.drawTarget(t, this.cam, this.time);
     for (const w of this.walls) v.drawWall(w, this.cam); // 牆畫在目標之後，擋住牆後的目標
-    this.fx = this.fx.filter((f) => this.time - f.t < 0.25);
+    this.fx = this.fx.filter((f) => this.time - f.t < 0.7);
     for (const f of this.fx) v.drawEffect(f, this.cam, this.time);
     const xh = Crosshair.current();
     if (this.zoomCur > 1) {
@@ -349,6 +356,7 @@ class Game {
       Crosshair.draw(v.ctx, v.W / 2, v.H / 2, xh, v.dpr);
     }
     if (this.weapon) this.drawWeaponHud();
+    if (Store.settings.showFps && this.fps) v.drawFps(this.fps);
   }
 
   // 畫面下方：武器名稱、倍率、上膛進度
