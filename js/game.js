@@ -62,7 +62,10 @@ class Game {
     this.weapon = this.mode.weapon ? WEAPONS[this.mode.weapon] : null;
     this.zoomIdx = 0;      // 0 = 未開鏡，1 = 第一段倍率…
     this.zoomCur = 1;      // 目前實際倍率（開鏡動畫中會介於兩段之間）
-    this.readyAt = 0;      // 下一發可以開槍的時間（上膛）
+    this.readyAt = 0;      // 下一發可以開槍的時間（上膛 / 換彈）
+    this.cycle = 1;        // 目前這段上膛 / 換彈的總秒數（HUD 進度條用）
+    this.ammo = this.weapon && this.weapon.mag ? this.weapon.mag : null; // 有彈匣的槍才計算子彈
+    this.reloading = false;
     this.rightHeld = false;
     this.view.setZoom(1);
     this.mode.setup(this);
@@ -272,8 +275,19 @@ class Game {
     if (this.weapon) {
       if (this.time < this.readyAt) return; // 上膛中，扣扳機沒有反應
       if (!this.isFullyScoped()) dir = this.spreadDir(this.weapon.hipSpread);
-      this.readyAt = this.time + this.weapon.fireInterval;
-      this.setZoomIdx(0); // 開槍後自動退出瞄準鏡
+      let unscope = !this.weapon.keepScope; // 預設開槍後自動退出瞄準鏡
+      this.cycle = this.weapon.fireInterval;
+      if (this.ammo != null) {
+        this.ammo--;
+        if (this.ammo <= 0) { // 打空：自動換彈，換彈時會退鏡
+          this.ammo = this.weapon.mag;
+          this.cycle = this.weapon.reloadTime;
+          this.reloading = true;
+          unscope = true;
+        }
+      }
+      this.readyAt = this.time + this.cycle;
+      if (unscope) this.setZoomIdx(0);
     }
     let hit = null, hitAng = Infinity;
     for (const t of this.targets) {
@@ -370,12 +384,15 @@ class Game {
     ctx.font = `700 ${18 * dpr}px Rajdhani, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ece8e1';
+    if (ready) this.reloading = false;
     const zoom = this.zoomIdx ? ` · ${this.targetZoom()}×` : '';
-    ctx.fillText(`${this.weapon.name.toUpperCase()}${zoom}`, W / 2, y - 10 * dpr);
+    let ammo = '';
+    if (this.ammo != null) ammo = this.reloading ? ' · 換彈中' : ` · ${this.ammo}/${this.weapon.mag}`;
+    ctx.fillText(`${this.weapon.name.toUpperCase()}${zoom}${ammo}`, W / 2, y - 10 * dpr);
     ctx.fillStyle = 'rgba(236,232,225,0.2)';
     ctx.fillRect(x, y, w, h);
     ctx.fillStyle = ready ? '#3ee8a5' : '#ff4655';
-    ctx.fillRect(x, y, w * (1 - left / this.weapon.fireInterval), h);
+    ctx.fillRect(x, y, w * (1 - left / this.cycle), h);
     ctx.restore();
   }
 

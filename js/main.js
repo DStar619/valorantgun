@@ -25,6 +25,7 @@
     reflex: '<path d="M13 2 5 13.5h6L10 22l9-12h-6z"/>',
     'op-flick': '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
     'marshal-peek': '<path d="M3 4h6v16H3zM15 4h6v16h-6z"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
+    'outlaw-double': '<circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="9.5" cy="12" r="1.6" fill="currentColor"/><circle cx="14.5" cy="12" r="1.6" fill="currentColor"/>',
   };
   const icon = (id) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id] || ''}</svg>`;
 
@@ -102,7 +103,7 @@
     if (t === 'xh') drawPreview();
   });
 
-  // 主選單數字鍵 1–8 直接開始對應模式
+  // 主選單數字鍵 1–9 直接開始對應模式
   document.addEventListener('keydown', (e) => {
     if (!screens.menu.classList.contains('active')) return;
     if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
