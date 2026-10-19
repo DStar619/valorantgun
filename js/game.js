@@ -58,6 +58,8 @@ class Game {
     this.trackOn = 0;
     this.trackTotal = 0;
     this.walls = [];
+    this.bloom = 0;        // 目前開火誤差（度）
+    this.bloomAt = 0;      // 最後一次開槍的時間
     // 狙擊槍狀態
     this.weapon = this.mode.weapon ? WEAPONS[this.mode.weapon] : null;
     this.zoomIdx = 0;      // 0 = 未開鏡，1 = 第一段倍率…
@@ -265,6 +267,18 @@ class Game {
     return [v[0] / len, v[1] / len, v[2] / len];
   }
 
+  // ---------- 開火誤差（準星擴散） ----------
+  addBloom() {
+    this.bloom = Math.min(FIRING_ERROR.max, this.bloom + FIRING_ERROR.kick);
+    this.bloomAt = this.time;
+  }
+
+  updateBloom(dt) {
+    if (this.bloom > 0 && this.time - this.bloomAt >= FIRING_ERROR.delay) {
+      this.bloom = Math.max(0, this.bloom - FIRING_ERROR.recover * dt);
+    }
+  }
+
   // ---------- 射擊 ----------
   shoot() {
     if (this.mode.kind === 'tracking') return;
@@ -275,6 +289,7 @@ class Game {
       this.readyAt = this.time + this.weapon.fireInterval;
       this.setZoomIdx(0); // 開槍後自動退出瞄準鏡
     }
+    this.addBloom();
     let hit = null, hitAng = Infinity;
     for (const t of this.targets) {
       if (this.mode.hittable && !this.mode.hittable(this, t)) continue;
@@ -327,6 +342,7 @@ class Game {
       }
     } else if (this.state === 'running') {
       this.time += dt;
+      this.updateBloom(dt);
       if (this.mode.update) this.mode.update(this, dt);
       if (this.time >= this.duration) this.finish();
     }
@@ -346,7 +362,8 @@ class Game {
       v.drawScope(progress);
       if (this.isFullyScoped()) Crosshair.drawScopeDot(v.ctx, v.W / 2, v.H / 2, xh, v.dpr);
     } else {
-      Crosshair.draw(v.ctx, v.W / 2, v.H / 2, xh, v.dpr);
+      const err = Math.tan(this.bloom * DEG) * v.k;
+      Crosshair.draw(v.ctx, v.W / 2, v.H / 2, xh, v.dpr, err, this.bloom / FIRING_ERROR.max);
     }
     if (this.weapon) this.drawWeaponHud();
   }

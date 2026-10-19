@@ -20,6 +20,10 @@ const WEAPONS = {
   marshal: { name: 'Marshal', zooms: [3.5], fireInterval: 1 / 1.5, hipSpread: 1.5, scopeTime: 0.15 },
 };
 
+// 開火誤差（準星擴散）：每開一槍誤差增加 kick 度，最多 max 度；
+// 停火 delay 秒後以每秒 recover 度恢復。數值為近似值（類似 Vandal 連點時的擴散幅度）
+const FIRING_ERROR = { kick: 0.6, max: 2.5, delay: 0.08, recover: 5 };
+
 // 狙擊模式的得分：開槍越快加分越多（狙擊節奏較慢，所以給較長的加分時間）
 const sniperPoints = (ttk) => 100 + Math.round(clamp(1 - ttk / 2.5, 0, 1) * 100);
 

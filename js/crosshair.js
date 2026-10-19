@@ -14,10 +14,13 @@ const Crosshair = (() => {
     top: {},
     P: {
       c: '0', u: 'FFFFFFFF',              // 顏色索引 / 自訂顏色 RRGGBBAA（c=8 時使用）
+      f: '1', s: '0', m: '0',             // 隨開火誤差淡出 / 顯示觀戰者準星 / 以準星間距取代開火誤差間距
       h: '1', t: '1', o: '0.5',           // 外框：開關 / 粗細 / 不透明度
       d: '0', z: '2', a: '1',             // 中心點：開關 / 粗細 / 不透明度
       '0b': '1', '0t': '2', '0l': '6', '0v': '6', '0g': '0', '0o': '3', '0a': '0.8', // 內線
+      '0m': '0', '0s': '1', '0f': '1', '0e': '1', // 內線：移動誤差 / 倍率 / 開火誤差 / 倍率
       '1b': '1', '1t': '2', '1l': '2', '1v': '2', '1g': '0', '1o': '10', '1a': '0.35', // 外線
+      '1m': '1', '1s': '1', '1f': '1', '1e': '1', // 外線：移動誤差 / 倍率 / 開火誤差 / 倍率
     },
     A: {},
     // 狙擊鏡中心點（遊戲預設值為推估）
@@ -125,7 +128,8 @@ const Crosshair = (() => {
   }
 
   // 繪製主要準星；scale = 每個「準星像素」對應的畫布像素
-  function draw(ctx, cx, cy, xh, scale) {
+  // err = 開火誤差在畫面上的半徑（畫布像素），errFrac = 誤差佔上限的比例（0–1，用於淡出）
+  function draw(ctx, cx, cy, xh, scale, err = 0, errFrac = 0) {
     const P = (k) => num(xh, 'P', k);
     const px = (v) => Math.round(v * scale);
     cx = Math.round(cx);
@@ -134,11 +138,13 @@ const Crosshair = (() => {
 
     for (const n of ['0', '1']) {
       if (P(`${n}b`) !== 1) continue;
-      const a = P(`${n}a`);
+      // 開火誤差：線條往外推 err × 倍率；勾選「以準星間距取代」(m) 時線條不動，只保留淡出
+      const fe = P(`${n}f`) === 1 && err > 0 ? err * P(`${n}e`) : 0;
+      const a = P(`${n}a`) * (fe > 0 && P('f') === 1 ? 1 - 0.6 * errFrac : 1);
       const t = px(P(`${n}t`));
       const l = px(P(`${n}l`));
       const v = px(P(`${n}g`) === 1 ? P(`${n}v`) : P(`${n}l`));
-      const off = px(P(`${n}o`));
+      const off = px(P(`${n}o`)) + (P('m') === 1 ? 0 : Math.round(fe));
       if (t <= 0 || a <= 0) continue;
       const c0 = Math.floor(t / 2);
       if (l > 0) {
