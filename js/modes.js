@@ -106,6 +106,7 @@ const MODES = [
     tag: '點擊 · 準星擺放',
     desc: '頭部大小的目標只會出現在同一條水平線（紅線）上。練習準星永遠保持在頭線高度。',
     kind: 'click',
+    headLine: true,
     setup(g) { this.spawnOne(g); },
     spawnOne(g) {
       const r = 0.55 * g.scale;

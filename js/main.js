@@ -15,25 +15,101 @@
   }
 
   // ---------- 模式卡片 ----------
+  // 24×24 線條圖示（stroke 使用 currentColor）
+  const ICONS = {
+    gridshot: '<circle cx="5" cy="5" r="2"/><circle cx="12" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="19" cy="12" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="19" r="2"/>',
+    flick: '<circle cx="6" cy="18" r="2.5"/><circle cx="19" cy="5" r="2.5" fill="currentColor"/><path d="M8 16 16.5 7.5M12 7h4.5v4.5"/>',
+    micro: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>',
+    headline: '<path d="M2 12h20" stroke-dasharray="2 2"/><circle cx="15" cy="12" r="3" fill="currentColor"/><path d="M15 15v6M11 21h8"/>',
+    tracking: '<circle cx="12" cy="12" r="3.5" fill="currentColor"/><path d="M2 12h4M18 12h4M4 9l-2 3 2 3M20 9l2 3-2 3"/>',
+    reflex: '<path d="M13 2 5 13.5h6L10 22l9-12h-6z"/>',
+    'op-flick': '<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
+    'marshal-peek': '<path d="M3 4h6v16H3zM15 4h6v16h-6z"/><circle cx="12" cy="12" r="2" fill="currentColor"/>',
+    'outlaw-double': '<circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="9.5" cy="12" r="1.6" fill="currentColor"/><circle cx="14.5" cy="12" r="1.6" fill="currentColor"/>',
+  };
+  const icon = (id) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id] || ''}</svg>`;
+
+  // 迷你趨勢線：最近 12 場分數，最新一場用強調色圓點
+  function sparkline(runs) {
+    const vals = runs.slice(-12).map((r) => r.score);
+    if (vals.length < 2) return '';
+    const W = 72, H = 22, lo = Math.min(...vals), hi = Math.max(...vals);
+    const x = (i) => 2 + i / (vals.length - 1) * (W - 6);
+    const y = (v) => 3 + (hi === lo ? 0.5 : 1 - (v - lo) / (hi - lo)) * (H - 6);
+    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const last = vals.length - 1;
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">
+      <polyline points="${pts}"/><circle cx="${x(last)}" cy="${y(vals[last])}" r="2.5"/></svg>`;
+  }
+
+  let modeFilter = 'all';
   function renderModes() {
     const duration = Number(Store.settings.duration);
     $('mode-list').innerHTML = '';
-    for (const m of MODES) {
+    MODES.forEach((m, idx) => {
+      const isSniper = !!m.weapon;
+      if (modeFilter === 'rifle' && isSniper) return;
+      if (modeFilter === 'sniper' && !isSniper) return;
       const best = Store.best(m.id, duration);
+      const runs = Store.runs(m.id, duration);
       const card = document.createElement('button');
-      card.className = 'mode-card' + (m.weapon ? ' sniper' : '');
+      card.className = 'mode-card' + (isSniper ? ' sniper' : '');
+      card.style.setProperty('--i', idx);
       card.innerHTML = `
-        <span class="tag"></span>
+        <div class="card-top"><span class="icon">${icon(m.id)}</span><span class="tag"></span><kbd class="key">${idx + 1}</kbd></div>
         <h4></h4>
         <p></p>
-        <div class="best">${duration} 秒最佳：<b>${best == null ? '—' : best}</b></div>`;
+        <div class="card-foot">
+          <div class="best">${duration} 秒最佳<b>${best == null ? '—' : best}</b><small>${runs.length ? `${runs.length} 場` : '尚未遊玩'}</small></div>
+          ${sparkline(runs)}
+        </div>`;
       card.querySelector('.tag').textContent = m.tag;
       card.querySelector('h4').textContent = m.name;
       card.querySelector('p').textContent = m.desc;
       card.addEventListener('click', () => startMode(m));
       $('mode-list').appendChild(card);
+    });
+    renderBrandStats();
+  }
+
+  // 標題旁的總覽：總場數、總練習時間、今天的場數
+  function renderBrandStats() {
+    const all = Store.history();
+    const minutes = Math.round(all.reduce((a, r) => a + (r.duration || 0), 0) / 60);
+    const today = new Date().toDateString();
+    const todayRuns = all.filter((r) => new Date(r.date).toDateString() === today).length;
+    const items = [['總場數', all.length], ['練習分鐘', minutes], ['今天', `${todayRuns} 場`]];
+    $('brand-stats').innerHTML = '';
+    for (const [label, value] of items) {
+      const d = document.createElement('div');
+      d.innerHTML = '<b></b><span></span>';
+      d.querySelector('b').textContent = value;
+      d.querySelector('span').textContent = label;
+      $('brand-stats').appendChild(d);
     }
   }
+
+  // 分頁按鈕組：點擊切換 aria-selected，回呼收到 data 值
+  function bindTabs(container, attr, onChange) {
+    const buttons = container.querySelectorAll('[role="tab"]');
+    buttons.forEach((b) => b.addEventListener('click', () => {
+      buttons.forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+      onChange(b.dataset[attr]);
+    }));
+  }
+  bindTabs($('mode-filter'), 'filter', (f) => { modeFilter = f; renderModes(); });
+  bindTabs($('side-tabs'), 'tab', (t) => {
+    document.querySelectorAll('.tab-panel').forEach((p) => { p.hidden = p.dataset.panel !== t; });
+    if (t === 'xh') drawPreview();
+  });
+
+  // 主選單數字鍵 1–9 直接開始對應模式
+  document.addEventListener('keydown', (e) => {
+    if (!screens.menu.classList.contains('active')) return;
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) return;
+    const n = Number(e.key);
+    if (n >= 1 && n <= MODES.length) startMode(MODES[n - 1]);
+  });
 
   function startMode(mode) {
     currentMode = mode;
@@ -318,6 +394,18 @@
   });
 
   // ---------- 結算 ----------
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function countUp(el, target) {
+    if (reduceMotion || target <= 0) { el.textContent = target; return; }
+    const start = performance.now(), dur = 700;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / dur);
+      el.textContent = Math.round(target * (1 - Math.pow(1 - t, 3)));
+      if (t < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
   game.onQuit = () => {
     show('menu');
     renderModes();
@@ -376,7 +464,7 @@
     lastResult = r;
     const mode = modeById[r.mode];
     $('res-mode').textContent = `${mode.name} · ${r.duration} 秒`;
-    $('res-score').textContent = r.score;
+    countUp($('res-score'), r.score);
     const badge = $('res-badge');
     badge.className = 'badge' + (isBest ? ' new' : '');
     badge.textContent = isBest
